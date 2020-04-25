@@ -21,6 +21,7 @@ import currency
 import userful_urls as urls
 import invite_links as invs
 from search_photo import search_photo
+from select_pgsql import metrics_select
 from logger import Logger
 from db import DB
 
@@ -89,7 +90,7 @@ def message_handler_callback(bot: telegram.Bot, update: telegram.Update):
             return
 
         currency_value = currency.get_currency(currency_name=currency_name)
-        if len(currency_value) != 0:
+        if currency_value:
             reply_text = f'Курс {currency_name} к рублю: ' + currency_value
             bot.send_message(
                 chat_id=source_chat_id,
@@ -133,7 +134,6 @@ def message_handler_callback(bot: telegram.Bot, update: telegram.Update):
         if request_limit is not None:
             _, limit_str = request_limit.group().split()
             limit = int(limit_str)
-        print(update.effective_user.id)
         photo_sizes = bot.get_user_profile_photos(
             user_id=update.effective_user.id, offset=0, limit=limit,
         ).photos
@@ -279,6 +279,15 @@ def message_handler_callback(bot: telegram.Bot, update: telegram.Update):
                     chat_id=source_chat_id,
                     text=''.join(logs[-min(int(strings_count), len(logs)) :]),
                 )
+    elif (
+        source_chat_id == config.MY_LOCAL_CHAT_ID
+        or source_chat_id == config.TB_CHAT_ID
+    ) and re.match('select \* from metrics.', text):
+        bot.send_message(
+            chat_id=source_chat_id,
+            text=metrics_select(text),
+            parse_mode=telegram.ParseMode.MARKDOWN,
+        )
 
     logger.log(user=update.effective_user, message=update.effective_message)
 
