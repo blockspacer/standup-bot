@@ -4,8 +4,8 @@ from telegram import KeyboardButton
 from telegram import InlineKeyboardButton
 from telegram import ReplyKeyboardMarkup
 from telegram import InlineKeyboardMarkup
+from telegram import Message
 from telegram.ext import Updater
-from telegram.ext import MessageHandler
 from telegram.ext import Filters
 from telegram.ext import Job
 from telegram.ext import JobQueue
@@ -13,6 +13,7 @@ import datetime
 import time
 import random
 import json
+import os
 import typing
 import re
 
@@ -54,7 +55,8 @@ def change_standup_job_schedule(time_str: str, hour: int, minute: int):
 
 def message_handler_callback(bot: telegram.Bot, update: telegram.Update):
     source_chat_id = update.message.chat_id
-    text = update.message.text.lower()
+    text = update.message.text if update.message.text else ''
+    text = text.lower()
 
     if (
             source_chat_id == config.TB_CHAT_ID
@@ -73,8 +75,13 @@ def message_handler_callback(bot: telegram.Bot, update: telegram.Update):
                     chat_id=source_chat_id,
                     text=f'Время стендапа изменено на {time_str}',
                 )
-
-    elif re.match('дискорд', text) is not None:
+    elif update.message.sticker:
+        file_id = update.message.sticker.file_id
+        db.add_sticker(file_id=file_id)
+    elif re.search('стикер', text) is not None:
+        random_file_id = random.choice(db.get_stickers())
+        bot.send_sticker(chat_id=source_chat_id, sticker=random_file_id)
+    elif re.search('дискорд', text) is not None:
         reply_text = 'Го дискорд \n\n ' + config.DISCORD_REFERENCE
         bot.send_message(chat_id=source_chat_id, text=reply_text)
     elif re.match('жив\?', text) is not None:
@@ -108,7 +115,9 @@ def message_handler_callback(bot: telegram.Bot, update: telegram.Update):
                 photo = telegram.InputMediaPhoto(
                     search_photo(photo_name=words[1]),
                 )
-                bot.send_media_group(chat_id=source_chat_id, media=[photo])
+                bot.send_media_group(
+                    chat_id=source_chat_id, media=[photo], timeout=5,
+                )
     elif re.match('бот.{1,}ты.*', text) is not None:
         reply_button = KeyboardButton(text='извини')
 
@@ -265,6 +274,10 @@ def message_handler_callback(bot: telegram.Bot, update: telegram.Update):
             text='полезные ссылки:',
             reply_markup=reply_markup,
         )
+    elif re.search('аврор', text) is not None:
+        bot.send_location(
+            chat_id=source_chat_id, latitude=55.734700, longitude=37.64260,
+        )
     elif source_chat_id == config.MY_LOCAL_CHAT_ID and re.match('логи', text):
         strings_count = str()
         if text == 'логи':
@@ -292,6 +305,21 @@ def message_handler_callback(bot: telegram.Bot, update: telegram.Update):
     logger.log(user=update.effective_user, message=update.effective_message)
 
 
+def inline_query_callback(bot: telegram.Bot, update: telegram.Update):
+    query = update.inline_query
+
+    if re.search('стикер', query.query) is not None:
+        results: typing.List[telegram.InlineQueryResultCachedSticker] = []
+
+        for sticker_file_id in db.get_stickers_with_limit(50):
+            results.append(
+                telegram.InlineQueryResultCachedSticker(
+                    id=sticker_file_id[30:], sticker_file_id=sticker_file_id,
+                ),
+            )
+        bot.answer_inline_query(inline_query_id=query.id, results=results)
+
+
 def standup_job_handler_callback(bot: telegram.Bot, job):
     phrases_len = len(config.STANDUP_CALL_PHRASES)
     shuffled_members = config.MEMBERS_TAGS.copy()
@@ -315,12 +343,29 @@ def standup_job_handler_callback(bot: telegram.Bot, job):
     time.sleep(1)
     bot.send_message(chat_id=config.TB_CHAT_ID, text=queue_text)
 
+    random_sticker = random.choice(db.get_stickers())
+    time.sleep(1)
+    bot.send_sticker(chat_id=config.TB_CHAT_ID, sticker=random_sticker)
+
+    time.sleep(1)
+    # Aurora location
+    bot.send_location(
+        chat_id=config.TB_CHAT_ID,
+        latitude=55.734700,
+        longitude=37.64260,
+        live_period=2400,
+    )
+
 
 def main():
     updater = Updater(bot=bot)
 
-    message_handler = MessageHandler(
+    message_handler = telegram.ext.MessageHandler(
         filters=Filters.all, callback=message_handler_callback,
+    )
+
+    inline_query_handler = telegram.ext.InlineQueryHandler(
+        callback=inline_query_callback,
     )
 
     hour, minute = db.get_standup_time().split(':')
@@ -332,6 +377,7 @@ def main():
     jobs_queue.start()
 
     updater.dispatcher.add_handler(handler=message_handler)
+    updater.dispatcher.add_handler(handler=inline_query_handler)
 
     updater.start_polling(poll_interval=3.0)
     updater.idle()

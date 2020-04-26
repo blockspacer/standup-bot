@@ -1,3 +1,0 @@
-ERROR: exception in get_currency
-ERROR: exception in get_currency
-ERROR: exception in get_currency
