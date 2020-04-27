@@ -30,7 +30,6 @@ class DB:
         random.shuffle(stickers)
         return stickers[:limit]
 
-
     def add_sticker(self, file_id: str) -> None:
         self.stickers.append(file_id)
         sticker_filename = '/'.join([self.stickers_dir_path, file_id])
