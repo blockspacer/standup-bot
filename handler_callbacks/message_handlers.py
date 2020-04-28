@@ -14,12 +14,13 @@ import typing
 import re
 
 import config
-import currency
+from functions import currency
 from . import job_handlers
 import userful_urls as urls
 import invite_links as invs
-from search_photo import search_photo
+from functions import search_photo
 from select_pgsql import metrics_select
+from functions import tts_api_request
 from logger import Logger
 from db import DB
 from bot import jobs_queue
@@ -89,11 +90,9 @@ def message_handler_callback(bot: telegram.Bot, update: telegram.Update):
     elif re.match('картинка', text) is not None:
         words = text.split(' ', maxsplit=1)
         if len(words) == 2:
-            photo_url = search_photo(photo_name=words[1])
+            photo_url = search_photo.search_photo(photo_name=words[1])
             if photo_url.startswith('http'):
-                photo = telegram.InputMediaPhoto(
-                    search_photo(photo_name=words[1]),
-                )
+                photo = telegram.InputMediaPhoto(photo_url)
                 bot.send_media_group(
                     chat_id=source_chat_id, media=[photo], timeout=5,
                 )
@@ -257,6 +256,30 @@ def message_handler_callback(bot: telegram.Bot, update: telegram.Update):
         bot.send_location(
             chat_id=source_chat_id, latitude=55.734700, longitude=37.64260,
         )
+    elif re.search('голос', text) is not None:
+        voice_actor = ''
+        voice_text = ''
+        if re.match('мужской голос', text) is not None:
+            voice_actor = 'filipp'
+            voice_text = text[len(str('мужской голос')) :]
+        elif re.match('женский голос', text) is not None:
+            voice_actor = 'alena'
+            voice_text = text[len(str('женский голос')) :]
+        elif re.match('голос', text) is not None:
+            voice_text = text[len(str('голос')) :]
+            voice_actor = 'oksana'
+
+        if voice_actor:
+            voice_filename_path = tts_api_request.get_voice_file(
+                text=voice_text, voice_actor=voice_actor,
+            )
+            with open(voice_filename_path, 'rb') as voice_filename:
+                bot.send_voice(
+                    chat_id=source_chat_id,
+                    voice=voice_filename,
+                    reply_to_message_id=update.message.message_id,
+                )
+            os.remove(voice_filename_path)
     elif source_chat_id == config.MY_LOCAL_CHAT_ID and re.match('логи', text):
         strings_count = str()
         if text == 'логи':

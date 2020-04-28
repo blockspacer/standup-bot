@@ -2,5 +2,6 @@ select_pgsql.py
 *.pyc
 log.txt
 data/*.txt
-data/
+data/*
+cron/*
 ./.mypy_cache/*
